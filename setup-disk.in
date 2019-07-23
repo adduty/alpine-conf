@@ -605,9 +605,10 @@ select_bootloader() {
 
 # install needed programs
 init_progs() {
-	local raidpkg= lvmpkg= fs= fstools= grub=
+	local raidpkg= lvmpkg= fs= fstools= grub= cryptpkg=
 	[ -n "$USE_RAID" ] && raidpkg="mdadm"
 	[ -n "$USE_LVM" ] && lvmpkg="lvm2"
+	[ -n "$USE_CRYPT" ] && cryptpkg="cryptsetup haveged"
 	for fs in $BOOTFS $ROOTFS $VARFS; do
 		# we need load btrfs module early to avoid the error message:
 		# 'failed to open /dev/btrfs-control'
@@ -622,7 +623,7 @@ init_progs() {
 		vfat) fstools="$fstools dosfstools";;
 		esac
 	done
-	apk add --quiet sfdisk $lvmpkg $raidpkg $fstools $@
+	apk add --quiet sfdisk $lvmpkg $raidpkg $fstools $cryptpkg $@
 }
 
 show_disk_info() {
@@ -1196,8 +1197,9 @@ esac
 DISK_MODE=
 USE_LVM=
 # Parse args
-while getopts "hk:Lm:o:qrs:v" opt; do
+while getopts "chk:Lm:o:qrs:v" opt; do
 	case $opt in
+		c) USE_CRYPT=1;;
 		m) DISK_MODE="$OPTARG";;
 		k) KERNEL_FLAVOR="$OPTARG";;
 		L) USE_LVM="_lvm";;
