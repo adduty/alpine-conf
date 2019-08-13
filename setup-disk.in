@@ -8,8 +8,14 @@ MBR=${MBR:-"/usr/share/syslinux/mbr.bin"}
 ROOTFS=${ROOTFS:-ext4}
 BOOTFS=${BOOTFS:-ext4}
 VARFS=${VARFS:-ext4}
+VARTMPFS=${VARTMPFS:-ext4}
+VARLOGFS=${VARLOGFS:-ext4}
+VARLOGAUDITFS=${VARLOGAUDITFS:-ext4}
+TMPFS=${TMPFS:-ext4}
+HOMEFS=${HOMEFS:-ext4}
 BOOTLOADER=${BOOTLOADER:-syslinux}
 DISKLABEL=${DISKLABEL:-dos}
+PARTSTYLE=${PARTSTYLE:-standard}
 
 # default location for mounted root
 SYSROOT=${SYSROOT:-/mnt}
@@ -1000,10 +1006,30 @@ native_disk_install() {
 	local root_part_type=$(partition_id linux)
 	local swap_part_type=$(partition_id swap)
 	local boot_part_type=$(partition_id linux)
+	if [ "$PARTSTYLE" = "partial" ] || [ "$PARTSTYLE" = "full" ]; then
+		local home_part_type=$(partition_id linux)
+	fi
+	if [ "$PARTSTYLE" = "full" ]; then
+		local tmp_part_style=$(partition_id linux)
+		local var_part_style=$(partition_id linux)
+		local var_tmp_part_style=$(partition_id linux)
+		local var_log_part_style=$(partition_id linux)
+		local var_log_audit_part_style=$(partition_id linux)
+	fi
 	local prep_size=8
 	local boot_size=${BOOT_SIZE:-100}
 	local swap_size=${SWAP_SIZE}
 	local root_size=
+	if [ "$PARTSTYLE" = "partial" ] || [ "$PARTSTYLE" = "full" ]; then
+		home_size=
+	fi
+	if [ "$PARTSTYLE" = "full" ]; then
+		tmp_size=
+		var_size=
+		var_tmp_size=
+		var_log_size=
+		var_log_audit_size=
+	fi
 	local root_dev= boot_dev= swap_dev=
 	init_progs $(select_bootloader) || return 1
 	confirm_erase $@ || return 1
@@ -1012,6 +1038,16 @@ native_disk_install() {
 		boot_part_type=$(partition_id raid)
 		root_part_type=$(partition_id raid)
 		swap_part_type=$(partition_id raid)
+		if [ "$PARTSTYLE" = "partial" ] || [ "$PARTSTYLE" = "full" ]; then
+			home_part_type=$(partition_id raid)
+		fi
+		if [ "$PARTSTYLE" = "full" ]; then
+			tmp_part_type=$(partition_id raid)
+			var_part_type=$(partition_id raid)
+			var_tmp_part_type=$(partition_id raid)
+			var_log_part_type=$(partition_id raid)
+			var_log_audit_part_type=$(partition_id raid)
+		fi
 		stop_all_raid
 	fi
 
@@ -1025,6 +1061,12 @@ native_disk_install() {
 				"${prep_size}M,$prep_part_type" \
 				"${boot_size}M,$boot_part_type,*" \
 				"${swap_size}M,$swap_part_type" \
+				"${home_size}${home_size:+M,}$home_part_type" \
+				"${tmp_size}${tmp_size:+M,}$tmp_part_type" \
+				"${var_size}${var_size:+M,}$var_part_type" \
+				"${var_tmp_size}${var_tmp_size:+M,}$var_tmp_part_type" \
+				"${var_log_size}${var_log_size:+M,}$var_log_part_type" \
+				"${var_log_audit_size}${var_log_audit_size:+M,}$var_log_audit_part_type" \
 				"${root_size}${root_size:+M},$root_part_type" \
 				|| return 1
 		elif is_dasd $diskdev eckd; then
@@ -1036,6 +1078,12 @@ native_disk_install() {
 			setup_partitions $diskdev \
 				"${boot_size}M,$boot_part_type,*" \
 				"${swap_size}M,$swap_part_type" \
+				"${home_size}${home_size:+M,}$home_part_type" \
+				"${tmp_size}${tmp_size:+M,}$tmp_part_type" \
+				"${var_size}${var_size:+M,}$var_part_type" \
+				"${var_tmp_size}${var_tmp_size:+M,}$var_tmp_part_type" \
+				"${var_log_size}${var_log_size:+M,}$var_log_part_type" \
+				"${var_log_audit_size}${var_log_audit_size:+M,}$var_log_audit_part_type" \
 				"${root_size}${root_size:+M},$root_part_type" \
 				|| return 1
 		fi
@@ -1048,12 +1096,30 @@ native_disk_install() {
 		if [ $SWAP_SIZE -gt 0 ]; then
 			swap_dev=/dev/md1
 			root_dev=/dev/md2
+			home_dev=/dev/md3
+			tmp_dev=/dev/md4
+			var_dev=/dev/md5
+			var_tmp_dev=/dev/md6
+			var_log_dev=/dev/md7
+			var_log_audit_dev=/dev/md8
 		else
 			swap_dev=
 			root_dev=/dev/md1
+			home_dev=/dev/md2
+			tmp_dev=/dev/md3
+			var_dev=/dev/md4
+			var_tmp_dev=/dev/md5
+			var_log_dev=/dev/md6
+			var_log_audit_dev=/dev/md7
 		fi
 		setup_non_boot_raid_dev "$swap_dev" $@ || return 1
 		setup_non_boot_raid_dev "$root_dev" $@ || return 1
+		setup_non_boot_raid_dev "$home_dev" $@ || return 1
+		setup_non_boot_raid_dev "$tmp_dev" $@ || return 1
+		setup_non_boot_raid_dev "$var_dev" $@ || return 1
+		setup_non_boot_raid_dev "$var_tmp_dev" $@ || return 1
+		setup_non_boot_raid_dev "$var_log_dev" $@ || return 1
+		setup_non_boot_raid_dev "$var_log_audit_dev" $@ || return 1
 	else
 		swap_dev=$(find_nth_non_boot_parts 1 "$swap_part_type" $@)
 		local index=
@@ -1064,6 +1130,12 @@ native_disk_install() {
 			*) index=1;;
 		esac
 		root_dev=$(find_nth_non_boot_parts $index "$root_part_type" $@)
+		home_dev=$(find_nth_non_boot_parts $((index+1)) "$home_part_type" $@)
+		tmp_dev=$(find_nth_non_boot_parts $((index+2)) "$tmp_part_type" $@)
+		var_dev=$(find_nth_non_boot_parts $((index+3)) "$var_part_type" $@)
+		var_tmp_dev=$(find_nth_non_boot_parts $((index+4)) "$var_tmp_part_type" $@)
+		var_log_dev=$(find_nth_non_boot_parts $((index+5)) "$var_log_part_type" $@)
+		var_log_audit_dev=$(find_nth_non_boot_parts $((index+6)) "$var_log_audit_part_type" $@)
 	fi
 
 	[ $SWAP_SIZE -gt 0 ] && setup_swap_dev $swap_dev
