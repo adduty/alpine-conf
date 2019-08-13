@@ -1021,14 +1021,14 @@ native_disk_install() {
 	local swap_size=${SWAP_SIZE}
 	local root_size=
 	if [ "$PARTSTYLE" = "partial" ] || [ "$PARTSTYLE" = "full" ]; then
-		home_size=
+		local home_size=
 	fi
 	if [ "$PARTSTYLE" = "full" ]; then
-		tmp_size=
-		var_size=
-		var_tmp_size=
-		var_log_size=
-		var_log_audit_size=
+		local tmp_size=
+		local var_size=
+		local var_tmp_size=
+		local var_log_size=
+		local var_log_audit_size=
 	fi
 	local root_dev= boot_dev= swap_dev=
 	init_progs $(select_bootloader) || return 1
@@ -1114,12 +1114,16 @@ native_disk_install() {
 		fi
 		setup_non_boot_raid_dev "$swap_dev" $@ || return 1
 		setup_non_boot_raid_dev "$root_dev" $@ || return 1
-		setup_non_boot_raid_dev "$home_dev" $@ || return 1
-		setup_non_boot_raid_dev "$tmp_dev" $@ || return 1
-		setup_non_boot_raid_dev "$var_dev" $@ || return 1
-		setup_non_boot_raid_dev "$var_tmp_dev" $@ || return 1
-		setup_non_boot_raid_dev "$var_log_dev" $@ || return 1
-		setup_non_boot_raid_dev "$var_log_audit_dev" $@ || return 1
+		if [ "$PARTSTYLE" = "partial" ] || [ "$PARTSTYLE" = "full" ]; then
+			setup_non_boot_raid_dev "$home_dev" $@ || return 1
+		fi
+		if [ "$PARTSTYLE" = "full" ]; then
+			setup_non_boot_raid_dev "$tmp_dev" $@ || return 1
+			setup_non_boot_raid_dev "$var_dev" $@ || return 1
+			setup_non_boot_raid_dev "$var_tmp_dev" $@ || return 1
+			setup_non_boot_raid_dev "$var_log_dev" $@ || return 1
+			setup_non_boot_raid_dev "$var_log_audit_dev" $@ || return 1
+		fi
 	else
 		swap_dev=$(find_nth_non_boot_parts 1 "$swap_part_type" $@)
 		local index=
